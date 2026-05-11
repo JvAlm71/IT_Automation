@@ -1,38 +1,78 @@
+# -------------------------
+# Python: bytecode / cache
+# -------------------------
 __pycache__/
 *.py[cod]
 *$py.class
 
+# -------------------------
 # Virtual environments
-.venv/
+# -------------------------
 venv/
+.venv/
 env/
+ENV/
 
-# Env files
-.env
-.env.*
+# -------------------------
+# Packaging / build output
+# -------------------------
+build/
+dist/
+.eggs/
+*.egg-info/
+pip-wheel-metadata/
 
-# IDE/editor
-.vscode/
-.idea/
+# -------------------------
+# Tests / coverage
+# -------------------------
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+coverage.xml
+htmlcov/
 
-# OS
-.DS_Store
-Thumbs.db
+# -------------------------
+# Linters / type checkers
+# -------------------------
+.mypy_cache/
+.pyright/
+.ruff_cache/
 
-# Logs and temp
+# -------------------------
+# Notebooks
+# -------------------------
+.ipynb_checkpoints/
+
+# -------------------------
+# Logs / temp
+# -------------------------
 *.log
 *.tmp
 *.bak
 
-# Python tooling
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-dist/
-build/
-*.egg-info/
+# -------------------------
+# Secrets / local env vars
+# -------------------------
+.env
+.env.*
+!.env.example
 
-# Jupyter
-.ipynb_checkpoints/
+# -------------------------
+# Selenium / browser artifacts (se você criar essas pastas)
+# -------------------------
+downloads/
+screenshots/
+
+# -------------------------
+# Editor / IDE
+# -------------------------
+.vscode/
+.idea/
+
+# -------------------------
+# OS / Windows / macOS
+# -------------------------
+.DS_Store
+Thumbs.db
+Desktop.ini
