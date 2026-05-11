@@ -1,2 +1,2 @@
-# Trampo
-Repositorio para armazenar estudos para meu trabalho e projetos relacionados
+# IT Automation
+This repository contains my studies, experiments, and projects focused on IT automation, including scripts, tools, and workflow improvements.
