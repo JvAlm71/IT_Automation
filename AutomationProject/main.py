@@ -1,11 +1,13 @@
 import re
-
 import pandas as pd
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, expect, sync_playwright
 
+#
+#AINDA PRECISO DEIXAR MAIS EFICIENTE, ESTÁ MUITO LENTO PARA PEGAR OS DADOS DE CADA ATIVO, POIS PRECISA MUDAR 
+# O SÍMBOLO DO GRÁFICO E ESPERAR OS ELEMENTOS ATUALIZAREM.
 
 def clicar_no_grafico(chart_iframe, position: dict | None = None):
-    """Clica no canvas do gráfico (útil pra aplicar seleção e atualizar valores)."""
+    """Clica no canvas do gráfico para pegar o valor mais atual."""
 
     chart_area = chart_iframe.get_by_label(re.compile(r"^Gráfico para", re.IGNORECASE))
     expect(chart_area).to_be_visible()
@@ -62,7 +64,7 @@ def extrair_dados_ativo(chart_iframe, ticker: str):
     ]
     for make_locator in selectors:
         try:
-            make_locator().click(timeout=2500)
+            make_locator().click(timeout=500)
             selected = True
             break
         except PlaywrightTimeoutError:
@@ -76,13 +78,13 @@ def extrair_dados_ativo(chart_iframe, ticker: str):
 
  
     if symbol_before:
-        expect(symbol_button).not_to_have_text(symbol_before, timeout=15000)
+        expect(symbol_button).not_to_have_text(symbol_before, timeout=500)
 
     try:
         if preco_before:
-            expect(preco_locator).not_to_have_text(preco_before, timeout=15000)
+            expect(preco_locator).not_to_have_text(preco_before, timeout=500)
         if variacao_before:
-            expect(variacao_locator).not_to_have_text(variacao_before, timeout=15000)
+            expect(variacao_locator).not_to_have_text(variacao_before, timeout=500)
     except AssertionError:
         pass
 
@@ -105,6 +107,9 @@ def extrair_dados_ativo(chart_iframe, ticker: str):
 
 
 def abrir_pagina_cotacoes(context):
+    """
+    Abre a pagina de cotações da B3 e retorna a página do gráfico, que é aberta em um popup.
+    """
     page1 = context.new_page()
     page1.goto("https://borainvestir.b3.com.br/", wait_until="domcontentloaded")
 
