@@ -2,21 +2,21 @@ import re
 import pandas as pd
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, expect, sync_playwright
 
-#
-#AINDA PRECISO DEIXAR MAIS EFICIENTE, ESTÁ MUITO LENTO PARA PEGAR OS DADOS DE CADA ATIVO, POIS PRECISA MUDAR 
-# O SÍMBOLO DO GRÁFICO E ESPERAR OS ELEMENTOS ATUALIZAREM.
+# I STILL NEED TO MAKE THIS MORE EFFICIENT: it's too slow to fetch data for each asset,
+# because it needs to change the chart symbol and wait for elements to update.
 
-def clicar_no_grafico(chart_iframe, position: dict | None = None):
-    """Clica no canvas do gráfico para pegar o valor mais atual."""
 
-    chart_area = chart_iframe.get_by_label(re.compile(r"^Gráfico para", re.IGNORECASE))
+def click_on_chart(chart_frame, position: dict | None = None):
+    """Clicks on the chart canvas to get the most up-to-date value."""
+
+    chart_area = chart_frame.get_by_label(re.compile(r"^Gráfico para", re.IGNORECASE))
     expect(chart_area).to_be_visible()
 
     if not position:
         chart_area.click()
         return
 
-    # A posição é relativa ao elemento; clamp evita erro se a viewport mudar.
+    # Position is relative to the element; clamp avoids errors if the viewport changes.
     box = chart_area.bounding_box()
     if not box:
         chart_area.click()
@@ -28,29 +28,29 @@ def clicar_no_grafico(chart_iframe, position: dict | None = None):
     y = max(1.0, min(y, box["height"] - 1.0))
     chart_area.click(position={"x": x, "y": y})
 
-def extrair_dados_ativo(chart_iframe, ticker: str):
+
+def extract_asset_data(chart_frame, ticker: str):
     """
-    Função para extrair o preço e variação de um ativo específico a 
-    partir do iframe do gráfico.
+    Extracts the price and change for a specific asset from the chart iframe.
     """
 
     ticker = ticker.strip().upper()
 
-    # Locators dos valores .
-    preco_locator = chart_iframe.locator(".valueValue-l31H9iuA").nth(5)
-    variacao_locator = chart_iframe.locator(".valueValue-l31H9iuA").nth(7)
+    # Value locators.
+    price_locator = chart_frame.locator(".valueValue-l31H9iuA").nth(5)
+    change_locator = chart_frame.locator(".valueValue-l31H9iuA").nth(7)
 
-    preco_before = (preco_locator.text_content() or "").strip()
-    variacao_before = (variacao_locator.text_content() or "").strip()
+    previous_price = (price_locator.text_content() or "").strip()
+    previous_change = (change_locator.text_content() or "").strip()
 
-    # Elemento que muda quando o símbolo do gráfico muda.
-    symbol_button = chart_iframe.get_by_role("button", name="Mudar símbolo")
+    # Element that changes when the chart symbol changes.
+    symbol_button = chart_frame.get_by_role("button", name="Mudar símbolo")
     expect(symbol_button).to_be_visible()
-    symbol_before = (symbol_button.text_content() or "").strip()
+    previous_symbol_text = (symbol_button.text_content() or "").strip()
 
-    # Abrir a pesquisa de símbolo, digitar e selecionar um resultado.
-    chart_iframe.get_by_role("button", name="Pesquisa de símbolo").click()
-    search_box = chart_iframe.get_by_role("searchbox", name="Símbolo, ISIN ou CUSIP")
+    # Open symbol search, type, and select a result.
+    chart_frame.get_by_role("button", name="Pesquisa de símbolo").click()
+    search_box = chart_frame.get_by_role("searchbox", name="Símbolo, ISIN ou CUSIP")
     expect(search_box).to_be_visible()
     search_box.dblclick()
     search_box.fill(ticker)
@@ -58,9 +58,9 @@ def extrair_dados_ativo(chart_iframe, ticker: str):
     ticker_pattern = re.compile(re.escape(ticker), re.IGNORECASE)
     selected = False
     selectors = [
-        lambda: chart_iframe.get_by_role("row", name=ticker_pattern).first,
-        lambda: chart_iframe.get_by_role("option", name=ticker_pattern).first,
-        lambda: chart_iframe.get_by_text(ticker_pattern).first,
+        lambda: chart_frame.get_by_role("row", name=ticker_pattern).first,
+        lambda: chart_frame.get_by_role("option", name=ticker_pattern).first,
+        lambda: chart_frame.get_by_text(ticker_pattern).first,
     ]
     for make_locator in selectors:
         try:
@@ -74,62 +74,61 @@ def extrair_dados_ativo(chart_iframe, ticker: str):
         search_box.press("ArrowDown")
         search_box.press("Enter")
 
-    clicar_no_grafico(chart_iframe, position={"x": 732, "y": 59})
+    click_on_chart(chart_frame, position={"x": 732, "y": 59})
 
- 
-    if symbol_before:
-        expect(symbol_button).not_to_have_text(symbol_before, timeout=500)
+    if previous_symbol_text:
+        expect(symbol_button).not_to_have_text(previous_symbol_text, timeout=500)
 
     try:
-        if preco_before:
-            expect(preco_locator).not_to_have_text(preco_before, timeout=500)
-        if variacao_before:
-            expect(variacao_locator).not_to_have_text(variacao_before, timeout=500)
+        if previous_price:
+            expect(price_locator).not_to_have_text(previous_price, timeout=500)
+        if previous_change:
+            expect(change_locator).not_to_have_text(previous_change, timeout=500)
     except AssertionError:
         pass
 
-    # Parte de extração de dados.
-    expect(preco_locator).to_be_visible()
-    expect(variacao_locator).to_be_visible()
+    # Data extraction.
+    expect(price_locator).to_be_visible()
+    expect(change_locator).to_be_visible()
 
-    preco = (preco_locator.text_content() or "").strip()
-    variacao = (variacao_locator.text_content() or "").strip()
+    price = (price_locator.text_content() or "").strip()
+    change = (change_locator.text_content() or "").strip()
 
-    nome_ativo = (symbol_button.text_content() or "").strip()
-    
+    asset_name = (symbol_button.text_content() or "").strip()
+
     return {
         "Ticker": ticker,
-        "Ativo": nome_ativo,
-        "Preço": preco,
-        "Variação": variacao,
+        "Ativo": asset_name,
+        "Preço": price,
+        "Variação": change,
         "Timestamp": pd.Timestamp.now()
     }
 
 
-def abrir_pagina_cotacoes(context):
+def open_quotes_page(context):
     """
-    Abre a pagina de cotações da B3 e retorna a página do gráfico, que é aberta em um popup.
+    Opens the B3 quotes page and returns the chart page, which opens in a popup.
     """
-    page1 = context.new_page()
-    page1.goto("https://borainvestir.b3.com.br/", wait_until="domcontentloaded")
+    landing_page = context.new_page()
+    landing_page.goto("https://borainvestir.b3.com.br/", wait_until="domcontentloaded")
 
-    with page1.expect_popup() as page2_info:
-        page1.get_by_role("link", name="Acompanhe as cotações").click()
+    with landing_page.expect_popup() as chart_page_info:
+        landing_page.get_by_role("link", name="Acompanhe as cotações").click()
 
-    page2 = page2_info.value
-    page2.wait_for_load_state("domcontentloaded")
-    return page2
-
-
-def obter_frame_grafico(page2):
-    chart_iframe = page2.frame_locator('iframe[title="advanced chart TradingView widget"]')
-    expect(chart_iframe.get_by_role("button", name="Intervalo do gráfico")).to_be_visible()
-    return chart_iframe
+    chart_page = chart_page_info.value
+    chart_page.wait_for_load_state("domcontentloaded")
+    return chart_page
 
 
-def setar_intervalo_1_dia(chart_iframe):
-    chart_iframe.get_by_role("button", name="Intervalo do gráfico").click()
-    chart_iframe.get_by_role("row", name="1 dia").click()
+def get_chart_frame(chart_page):
+    chart_frame = chart_page.frame_locator('iframe[title="advanced chart TradingView widget"]')
+    expect(chart_frame.get_by_role("button", name="Intervalo do gráfico")).to_be_visible()
+    return chart_frame
+
+
+def set_interval_1_day(chart_frame):
+    chart_frame.get_by_role("button", name="Intervalo do gráfico").click()
+    chart_frame.get_by_role("row", name="1 dia").click()
 
 
 def run():
@@ -137,9 +136,9 @@ def run():
         browser = playwright.chromium.launch(headless=False)
         context = browser.new_context()
 
-        page2 = abrir_pagina_cotacoes(context)
-        chart_iframe = obter_frame_grafico(page2)
-        setar_intervalo_1_dia(chart_iframe)
+        chart_page = open_quotes_page(context)
+        chart_frame = get_chart_frame(chart_page)
+        set_interval_1_day(chart_frame)
 
         tickers = [
             "PETR4",
@@ -148,13 +147,13 @@ def run():
             "GGBR3",
         ]
 
-        resultados = []
+        results = []
         for ticker in tickers:
-            dados = extrair_dados_ativo(chart_iframe, ticker)
-            resultados.append(dados)
-            print(f"{dados['Ticker']}: Preço={dados['Preço']} | Variação={dados['Variação']}")
+            data = extract_asset_data(chart_frame, ticker)
+            results.append(data)
+            print(f"{data['Ticker']}: Preço={data['Preço']} | Variação={data['Variação']}")
 
-        df = pd.DataFrame(resultados)
+        df = pd.DataFrame(results)
         print("\nResumo:")
         print(df)
 
