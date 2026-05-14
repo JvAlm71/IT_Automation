@@ -2,9 +2,8 @@ import time
 
 import pandas as pd
 from playwright.sync_api import sync_playwright
-
-from browser.navigation import get_chart_frame, open_quotes_page, set_interval_1_day
-from scraper.tradingview import extract_asset_data
+from browser.navigation import open_quotes_page
+from scraper.tradingview import extract_asset_data, set_interval_1_day, get_chart_frame
 from settings.config import BROWSER_LAUNCH_ARGS, HEADLESS, SQLITE_DB_PATH, TICKERS, VIEWPORT
 from storage.persistence import init_schema, insert_quote, open_sqlite
 

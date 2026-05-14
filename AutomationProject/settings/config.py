@@ -4,7 +4,7 @@ from pathlib import Path
 
 # Browser execution
 # Set to False to see the browser in action. Useful for debugging, but may be less stable.
-HEADLESS: bool = True  
+HEADLESS: bool = False  
 
 # WINDOW_SIZE: tuple[int, int] = (1920, 1080)
 VIEWPORT: dict[str, int] = {"width": 1920, "height": 1080}

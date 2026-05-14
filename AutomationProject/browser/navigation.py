@@ -15,22 +15,3 @@ def open_quotes_page(context):
 	chart_page = chart_page_info.value
 	chart_page.wait_for_load_state("domcontentloaded")
 	return chart_page
-
-
-
-def get_chart_frame(chart_page):
-	"""Returns the FrameLocator for the TradingView 'advanced chart' widget."""
-
-	chart_frame = chart_page.frame_locator('iframe[title="advanced chart TradingView widget"]')
-	expect(chart_frame.get_by_role("button", name="Intervalo do gráfico")).to_be_visible()
-	return chart_frame
-
-
-def set_interval_1_day(chart_frame):
-	"""Sets the chart interval to 1 day."""
-
-	chart_frame.get_by_role("button", name="Intervalo do gráfico").click()
-	chart_frame.get_by_role("row", name="1 dia").click()
-    #chart_frame.locator("span").filter(has_text="dia").nth(1).click()
-    # page.locator("iframe[title=\"advanced chart TradingView widget\"]").content_frame.get_by_role("button", name="Intervalo do gráfico").click()
-    # page.locator("iframe[title=\"advanced chart TradingView widget\"]").content_frame.locator("span").filter(has_text="dia").nth(1).click()
