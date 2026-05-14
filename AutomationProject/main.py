@@ -1,4 +1,6 @@
 import re
+import time
+
 import pandas as pd
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, expect, sync_playwright
 
@@ -37,11 +39,21 @@ def extract_asset_data(chart_frame, ticker: str):
     ticker = ticker.strip().upper()
 
     # Value locators.
+    # Keep your original nth() logic. In headless, nodes may exist but be hidden; that's OK.
     price_locator = chart_frame.locator(".valueValue-l31H9iuA").nth(5)
     change_locator = chart_frame.locator(".valueValue-l31H9iuA").nth(7)
 
-    previous_price = (price_locator.text_content() or "").strip()
-    previous_change = (change_locator.text_content() or "").strip()
+    # Read previous values with a short timeout to avoid blocking for 30s
+    # when the widget hasn't fully rendered yet.
+    try:
+        previous_price = (price_locator.text_content(timeout=1000) or "").strip()
+    except PlaywrightTimeoutError:
+        previous_price = ""
+
+    try:
+        previous_change = (change_locator.text_content(timeout=1000) or "").strip()
+    except PlaywrightTimeoutError:
+        previous_change = ""
 
     # Element that changes when the chart symbol changes.
     symbol_button = chart_frame.get_by_role("button", name="Mudar símbolo")
@@ -88,21 +100,19 @@ def extract_asset_data(chart_frame, ticker: str):
         pass
 
     # Data extraction.
-    expect(price_locator).to_be_visible()
-    expect(change_locator).to_be_visible()
+    # In headless, these nodes may not be "visible" even when they already contain correct data.
+    # So we synchronize by waiting for *valid text* instead of visibility.
+    expect(price_locator).not_to_have_text("∅", timeout=15000)
+    expect(change_locator).not_to_have_text("∅", timeout=15000)
+    expect(price_locator).to_contain_text(re.compile(r"\d"), timeout=15000)
+    expect(change_locator).to_contain_text("%", timeout=15000)
 
     price = (price_locator.text_content() or "").strip()
     change = (change_locator.text_content() or "").strip()
 
     asset_name = (symbol_button.text_content() or "").strip()
 
-    return {
-        "Ticker": ticker,
-        "Ativo": asset_name,
-        "Preço": price,
-        "Variação": change,
-        "Timestamp": pd.Timestamp.now()
-    }
+    return {"Ticker": ticker,"Ativo": asset_name,"Preço": price,"Variação": change,"Timestamp": pd.Timestamp.now()}
 
 
 def open_quotes_page(context):
@@ -133,25 +143,27 @@ def set_interval_1_day(chart_frame):
 
 def run():
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=False)
-        context = browser.new_context()
+        # 1) Minimal headless change: fix window size/viewport to avoid responsive layout differences.
+        browser = playwright.chromium.launch(headless=True,args=["--window-size=1920,1080"],)
+        context = browser.new_context(viewport={"width": 1920, "height": 1080})
 
         chart_page = open_quotes_page(context)
         chart_frame = get_chart_frame(chart_page)
         set_interval_1_day(chart_frame)
 
-        tickers = [
-            "PETR4",
-            "VALE3",
-            "ITUB4",
-            "GGBR3",
-        ]
+        tickers = ["PETR4","VALE3","ITUB4","GGBR3",]
 
         results = []
         for ticker in tickers:
+            # 3) Speed optimization aid: measure per-ticker time (perf_counter has negligible overhead).
+            start = time.perf_counter()
             data = extract_asset_data(chart_frame, ticker)
+            elapsed = time.perf_counter() - start
             results.append(data)
-            print(f"{data['Ticker']}: Preço={data['Preço']} | Variação={data['Variação']}")
+            print(
+                f"{data['Ticker']}: Preço={data['Preço']} | Variação={data['Variação']}"
+                f" | time={elapsed:.2f}s"
+            )
 
         df = pd.DataFrame(results)
         print("\nResumo:")
