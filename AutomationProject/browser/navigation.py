@@ -1,4 +1,6 @@
-from playwright.sync_api import expect
+import time
+
+from playwright.sync_api import expect, TimeoutError as PlaywrightTimeoutError
 
 
 def open_quotes_page(context):
@@ -15,6 +17,7 @@ def open_quotes_page(context):
 	return chart_page
 
 
+
 def get_chart_frame(chart_page):
 	"""Returns the FrameLocator for the TradingView 'advanced chart' widget."""
 
@@ -24,7 +27,10 @@ def get_chart_frame(chart_page):
 
 
 def set_interval_1_day(chart_frame):
-	"""Sets the chart interval to '1 dia'."""
+	"""Sets the chart interval to 1 day."""
 
 	chart_frame.get_by_role("button", name="Intervalo do gráfico").click()
 	chart_frame.get_by_role("row", name="1 dia").click()
+    #chart_frame.locator("span").filter(has_text="dia").nth(1).click()
+    # page.locator("iframe[title=\"advanced chart TradingView widget\"]").content_frame.get_by_role("button", name="Intervalo do gráfico").click()
+    # page.locator("iframe[title=\"advanced chart TradingView widget\"]").content_frame.locator("span").filter(has_text="dia").nth(1).click()
