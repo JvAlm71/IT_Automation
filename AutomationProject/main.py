@@ -1,176 +1,52 @@
-import re
 import time
 
 import pandas as pd
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, expect, sync_playwright
+from playwright.sync_api import sync_playwright
 
-# I STILL NEED TO MAKE THIS MORE EFFICIENT: it's too slow to fetch data for each asset,
-# because it needs to change the chart symbol and wait for elements to update.
-
-
-def click_on_chart(chart_frame, position: dict | None = None):
-    """Clicks on the chart canvas to get the most up-to-date value."""
-
-    chart_area = chart_frame.get_by_label(re.compile(r"^Gráfico para", re.IGNORECASE))
-    expect(chart_area).to_be_visible()
-
-    if not position:
-        chart_area.click()
-        return
-
-    # Position is relative to the element; clamp avoids errors if the viewport changes.
-    box = chart_area.bounding_box()
-    if not box:
-        chart_area.click()
-        return
-
-    x = float(position.get("x", 1))
-    y = float(position.get("y", 1))
-    x = max(1.0, min(x, box["width"] - 1.0))
-    y = max(1.0, min(y, box["height"] - 1.0))
-    chart_area.click(position={"x": x, "y": y})
+from browser.navigation import get_chart_frame, open_quotes_page, set_interval_1_day
+from scraper.tradingview import extract_asset_data
+from settings.config import BROWSER_LAUNCH_ARGS, HEADLESS, SQLITE_DB_PATH, TICKERS, VIEWPORT
+from storage.persistence import init_schema, insert_quote, open_sqlite
 
 
-def extract_asset_data(chart_frame, ticker: str):
-    """
-    Extracts the price and change for a specific asset from the chart iframe.
-    """
+def run() -> None:
+    """Orchestrates: open site -> scrape tickers -> print + persist to SQLite."""
 
-    ticker = ticker.strip().upper()
-
-    # Value locators.
-    # Keep your original nth() logic. In headless, nodes may exist but be hidden; that's OK.
-    price_locator = chart_frame.locator(".valueValue-l31H9iuA").nth(5)
-    change_locator = chart_frame.locator(".valueValue-l31H9iuA").nth(7)
-
-    # Read previous values with a short timeout to avoid blocking for 30s
-    # when the widget hasn't fully rendered yet.
-    try:
-        previous_price = (price_locator.text_content(timeout=1000) or "").strip()
-    except PlaywrightTimeoutError:
-        previous_price = ""
-
-    try:
-        previous_change = (change_locator.text_content(timeout=1000) or "").strip()
-    except PlaywrightTimeoutError:
-        previous_change = ""
-
-    # Element that changes when the chart symbol changes.
-    symbol_button = chart_frame.get_by_role("button", name="Mudar símbolo")
-    expect(symbol_button).to_be_visible()
-    previous_symbol_text = (symbol_button.text_content() or "").strip()
-
-    # Open symbol search, type, and select a result.
-    chart_frame.get_by_role("button", name="Pesquisa de símbolo").click()
-    search_box = chart_frame.get_by_role("searchbox", name="Símbolo, ISIN ou CUSIP")
-    expect(search_box).to_be_visible()
-    search_box.dblclick()
-    search_box.fill(ticker)
-
-    ticker_pattern = re.compile(re.escape(ticker), re.IGNORECASE)
-    selected = False
-    selectors = [
-        lambda: chart_frame.get_by_role("row", name=ticker_pattern).first,
-        lambda: chart_frame.get_by_role("option", name=ticker_pattern).first,
-        lambda: chart_frame.get_by_text(ticker_pattern).first,
-    ]
-    for make_locator in selectors:
-        try:
-            make_locator().click(timeout=500)
-            selected = True
-            break
-        except PlaywrightTimeoutError:
-            continue
-
-    if not selected:
-        search_box.press("ArrowDown")
-        search_box.press("Enter")
-
-    click_on_chart(chart_frame, position={"x": 732, "y": 59})
-
-    if previous_symbol_text:
-        expect(symbol_button).not_to_have_text(previous_symbol_text, timeout=500)
-
-    try:
-        if previous_price:
-            expect(price_locator).not_to_have_text(previous_price, timeout=500)
-        if previous_change:
-            expect(change_locator).not_to_have_text(previous_change, timeout=500)
-    except AssertionError:
-        pass
-
-    # Data extraction.
-    # In headless, these nodes may not be "visible" even when they already contain correct data.
-    # So we synchronize by waiting for *valid text* instead of visibility.
-    expect(price_locator).not_to_have_text("∅", timeout=15000)
-    expect(change_locator).not_to_have_text("∅", timeout=15000)
-    expect(price_locator).to_contain_text(re.compile(r"\d"), timeout=15000)
-    expect(change_locator).to_contain_text("%", timeout=15000)
-
-    price = (price_locator.text_content() or "").strip()
-    change = (change_locator.text_content() or "").strip()
-
-    asset_name = (symbol_button.text_content() or "").strip()
-
-    return {"Ticker": ticker,"Ativo": asset_name,"Preço": price,"Variação": change,"Timestamp": pd.Timestamp.now()}
-
-
-def open_quotes_page(context):
-    """
-    Opens the B3 quotes page and returns the chart page, which opens in a popup.
-    """
-    landing_page = context.new_page()
-    landing_page.goto("https://borainvestir.b3.com.br/", wait_until="domcontentloaded")
-
-    with landing_page.expect_popup() as chart_page_info:
-        landing_page.get_by_role("link", name="Acompanhe as cotações").click()
-
-    chart_page = chart_page_info.value
-    chart_page.wait_for_load_state("domcontentloaded")
-    return chart_page
-
-
-def get_chart_frame(chart_page):
-    chart_frame = chart_page.frame_locator('iframe[title="advanced chart TradingView widget"]')
-    expect(chart_frame.get_by_role("button", name="Intervalo do gráfico")).to_be_visible()
-    return chart_frame
-
-
-def set_interval_1_day(chart_frame):
-    chart_frame.get_by_role("button", name="Intervalo do gráfico").click()
-    chart_frame.get_by_role("row", name="1 dia").click()
-
-
-def run():
     with sync_playwright() as playwright:
-        # 1) Minimal headless change: fix window size/viewport to avoid responsive layout differences.
-        browser = playwright.chromium.launch(headless=True,args=["--window-size=1920,1080"],)
-        context = browser.new_context(viewport={"width": 1920, "height": 1080})
+        browser = playwright.chromium.launch(headless=HEADLESS, args=BROWSER_LAUNCH_ARGS)
+        context = browser.new_context(viewport=VIEWPORT)
 
-        chart_page = open_quotes_page(context)
-        chart_frame = get_chart_frame(chart_page)
-        set_interval_1_day(chart_frame)
+        conn = open_sqlite(SQLITE_DB_PATH)
+        init_schema(conn)
 
-        tickers = ["PETR4","VALE3","ITUB4","GGBR3",]
+        try:
+            chart_page = open_quotes_page(context)
+            chart_frame = get_chart_frame(chart_page)
+            set_interval_1_day(chart_frame)
 
-        results = []
-        for ticker in tickers:
-            # 3) Speed optimization aid: measure per-ticker time (perf_counter has negligible overhead).
-            start = time.perf_counter()
-            data = extract_asset_data(chart_frame, ticker)
-            elapsed = time.perf_counter() - start
-            results.append(data)
-            print(
-                f"{data['Ticker']}: Preço={data['Preço']} | Variação={data['Variação']}"
-                f" | time={elapsed:.2f}s"
-            )
+            results = []
+            for ticker in TICKERS:
+                start = time.perf_counter()
+                data = extract_asset_data(chart_frame, ticker)
+                elapsed = time.perf_counter() - start
 
-        df = pd.DataFrame(results)
-        print("\nResumo:")
-        print(df)
+                insert_quote(conn, data, scrape_time_s=elapsed)
+                conn.commit()
 
-        context.close()
-        browser.close()
+                results.append(data)
+                print(
+                    f"{data['Ticker']}: Preço={data['Preço']} | Variação={data['Variação']}"
+                    f" | time={elapsed:.2f}s"
+                )
+
+            df = pd.DataFrame(results)
+            print("\nResumo:")
+            print(df)
+
+        finally:
+            conn.close()
+            context.close()
+            browser.close()
 
 
 if __name__ == "__main__":
