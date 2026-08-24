@@ -1,4 +1,4 @@
-# IT Automation
+# IT
 This repository contains my studies, experiments, and projects focused on IT, including scripts, tools, and workflow improvements.
 
 
